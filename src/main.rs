@@ -1,14 +1,11 @@
 use std::env;
 
-use aws_lambda_events::{
-    apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
-    http::HeaderMap,
-};
 use aws_sdk_eventbridge::{
     error::SdkError,
     operation::put_events::{PutEventsError, PutEventsOutput},
 };
-use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use lambda_http::{run, service_fn, Error, IntoResponse, Request, Response};
+use serde_json::json;
 use tracing::info;
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -40,41 +37,42 @@ async fn send_to_event_bridge(
 async fn function_handler(
     bus_name: &str,
     client: &aws_sdk_eventbridge::Client,
-    event: LambdaEvent<ApiGatewayProxyRequest>,
-) -> Result<ApiGatewayProxyResponse, Error> {
+    event: Request,
+) -> Result<impl IntoResponse, Error> {
     let mut status_code = 200;
     let mut response_body = "Good Request";
 
-    match event.payload.body {
-        Some(body) => match serde_json::from_str::<Payload>(&body) {
-            Ok(payload) => match send_to_event_bridge(client, &payload, bus_name).await {
-                Ok(_) => info!("Successfully posted to EventBridge"),
-                Err(_) => {
-                    status_code = 400;
-                    response_body = "Bad Request";
-                }
-            },
+    let body = event.body();
+    let body_string = std::str::from_utf8(body).expect("Body wasn't supplied");
+    let payload: Result<Payload, serde_json::Error> = serde_json::from_str(body_string);
+
+    match payload {
+        Ok(payload) => match send_to_event_bridge(client, &payload, bus_name).await {
+            Ok(_) => info!("Successfully posted to EventBridge"),
             Err(_) => {
                 status_code = 400;
                 response_body = "Bad Request";
             }
         },
-        None => {
+        Err(_) => {
             status_code = 400;
             response_body = "Bad Request";
         }
     }
+    {}
 
-    let mut headers = HeaderMap::new();
-    headers.insert("content-type", "text/html".parse().unwrap());
-    let resp = ApiGatewayProxyResponse {
-        status_code: status_code,
-        multi_value_headers: headers.clone(),
-        is_base64_encoded: Some(false),
-        body: Some(response_body.into()),
-        headers,
-    };
-    Ok(resp)
+    let response = Response::builder()
+        .status(status_code)
+        .header("Content-Type", "application/json")
+        .body(
+            json!({
+              "message": response_body,
+            })
+            .to_string(),
+        )
+        .map_err(Box::new)?;
+
+    Ok(response)
 }
 
 #[tokio::main]
@@ -91,10 +89,8 @@ async fn main() -> Result<(), Error> {
 
     let bus_name = env::var("EVENT_BUS_NAME").expect("EVENT_BUS_NAME must be set");
     let cloned_bus_name = &bus_name.as_str();
-    run(service_fn(
-        move |payload: LambdaEvent<ApiGatewayProxyRequest>| async move {
-            function_handler(cloned_bus_name, shared_client, payload).await
-        },
-    ))
+    run(service_fn(move |payload: Request| async move {
+        function_handler(cloned_bus_name, shared_client, payload).await
+    }))
     .await
 }
