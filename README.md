@@ -1,14 +1,23 @@
-# Welcome to your CDK TypeScript project
+# AWS Rust SDK and EventBridge with Lambda
 
-This is a blank project for CDK development with TypeScript.
+Purpose: Demonstrate how to deploy a Lambda Function that handles a Function URL request and
+then builds a PutRequest to be executed by EventBridge. Supports the [article linked here](https://www.binaryheap.com/eventbridge-with-lambda-and-rust/)
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+![EventBridge with Lambda and Rust](https://www.binaryheap.com/wp-content/uploads/2024/01/rust_eb.png)
 
-## Useful commands
+## Install
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+### Dependencies
+
+-   Rust
+-   Node
+-   CDK
+
+### Deploy
+
+```bash
+# Deploy
+cdk deploy
+# Destroy
+cdk destroy
+```
